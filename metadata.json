@@ -1,0 +1,13 @@
+{
+  "name": "طبيب الحلال",
+  "description": "عيادة بيطرية ذكية تدعم الصوت والصورة لمربي الحلال والنحل في المناطق الريفية",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "AI-powered symptom analysis",
+    "Voice-to-text communication",
+    "Multimedia veterinary consultations"
+  ]
+}

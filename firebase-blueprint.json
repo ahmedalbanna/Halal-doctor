@@ -1,0 +1,67 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "System users (Farmers and Vets)",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["farmer", "vet", "admin"] },
+        "phone": { "type": "string" },
+        "location": { "type": "string" },
+        "preferredLanguage": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "name", "role", "phone"]
+    },
+    "Case": {
+      "title": "Medical Case",
+      "description": "A consultation for a sick animal",
+      "type": "object",
+      "properties": {
+        "farmerId": { "type": "string" },
+        "vetId": { "type": "string" },
+        "animalType": { "type": "string", "enum": ["sheep", "cow", "camel", "bee", "other"] },
+        "voiceUrl": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "symptoms": { "type": "array", "items": { "type": "string" } },
+        "status": { "type": "string", "enum": ["pending", "assigned", "responded", "closed"] },
+        "vetVoiceResponseUrl": { "type": "string" },
+        "prescription": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["farmerId", "animalType", "status", "createdAt"]
+    },
+    "Animal": {
+      "title": "Animal Record",
+      "description": "Farmer's record book for their livestock",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string" },
+        "photoUrl": { "type": "string" },
+        "healthHistory": { "type": "array", "items": { "type": "string" } },
+        "vaccinations": { "type": "array", "items": { "type": "object" } },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "type", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/cases/{caseId}": {
+      "schema": "Case",
+      "description": "Medical consultations"
+    },
+    "/users/{userId}/animals/{animalId}": {
+      "schema": "Animal",
+      "description": "Animal records owned by a user"
+    }
+  }
+}
