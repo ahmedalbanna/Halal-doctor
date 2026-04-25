@@ -55,23 +55,24 @@ export function VoiceRecorder({ onRecordingComplete }: VoiceRecorderProps) {
   };
 
   return (
-    <div className="flex flex-col items-center gap-4 p-6 bg-green-50 rounded-2xl border-2 border-green-100 shadow-sm transition-all hover:shadow-md">
-      <div className="text-center mb-2">
-        <h3 className="text-lg font-bold text-green-800">اشرح المشكلة بصوتك</h3>
-        <p className="text-sm text-green-600">اضغط على الميكرفون وابدأ الكلام</p>
+    <div className="geo-card p-10 flex flex-col items-center justify-center gap-6 relative overflow-hidden">
+      <div className="absolute top-0 right-0 w-24 h-24 bg-[var(--geo-green)] opacity-10 -mr-8 -mt-8 rotate-45"></div>
+      <div className="text-center z-10">
+        <h3 className="text-xl font-bold text-black">اشرح المشكلة بصوتك</h3>
+        <p className="text-sm font-bold text-gray-500">تحدث بلهجتك، نحن نسمعك</p>
       </div>
 
       {!audioUrl ? (
-        <motion.button
-          whileTap={{ scale: 0.9 }}
+        <button
           onClick={isRecording ? stopRecording : startRecording}
           id="mic-button"
-          className={`w-20 h-20 rounded-full flex items-center justify-center transition-colors ${
-            isRecording ? 'bg-red-500 animate-pulse' : 'bg-green-600 hover:bg-green-700'
+          className={`geo-button-record w-32 h-32 rounded-full flex flex-col items-center justify-center gap-2 z-10 ${
+            isRecording ? 'is-recording bg-red-600' : ''
           }`}
         >
           {isRecording ? <Square className="text-white w-8 h-8" /> : <Mic className="text-white w-10 h-10" />}
-        </motion.button>
+          {!isRecording && <span className="font-black text-sm">اضغط وسجل</span>}
+        </button>
       ) : (
         <div className="flex items-center gap-4 w-full">
           <audio src={audioUrl} controls className="flex-1 h-10" />
@@ -85,14 +86,10 @@ export function VoiceRecorder({ onRecordingComplete }: VoiceRecorderProps) {
       )}
 
       {isRecording && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="text-red-500 font-medium flex items-center gap-2"
-        >
+        <div className="text-red-500 font-bold flex items-center gap-2 mt-2">
           <div className="w-2 h-2 bg-red-500 rounded-full animate-ping" />
           جاري التسجيل...
-        </motion.div>
+        </div>
       )}
     </div>
   );

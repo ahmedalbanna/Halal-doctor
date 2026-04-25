@@ -153,14 +153,15 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gray-50 pb-28 font-sans">
       {/* Header */}
-      <header className="bg-green-700 text-white p-6 rounded-b-[2rem] shadow-lg sticky top-0 z-40">
-        <div className="flex justify-between items-center max-w-md mx-auto">
-          <div>
-            <h1 className="text-2xl font-bold">طبيب الحلال</h1>
-            <p className="text-green-100 text-sm">مرحباً بك، {profile?.name}</p>
-          </div>
-          <div className="p-3 bg-white/20 rounded-full backdrop-blur-md">
-            <Stethoscope className="w-6 h-6" />
+      <header className="flex justify-between items-center border-b-4 border-black pb-4 pt-6 px-6 bg-[var(--geo-bg)] sticky top-0 z-40">
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 bg-[var(--geo-green)] rounded-lg flex items-center justify-center text-white text-2xl font-black">H</div>
+          <h1 className="text-2xl font-black tracking-tight text-black">طبيب الحلال</h1>
+        </div>
+        <div className="flex gap-3 items-center">
+          <span className="text-xs font-bold bg-[var(--geo-yellow)] border-2 border-black px-2 py-1 truncate max-w-[80px]">مرحباً، {profile?.name?.split(' ')[0] || ''}</span>
+          <div className="w-10 h-10 bg-black rounded-full flex items-center justify-center text-white shrink-0">
+            <Stethoscope className="w-5 h-5" />
           </div>
         </div>
       </header>
@@ -186,13 +187,13 @@ export default function App() {
                     <button
                       key={type.id}
                       onClick={() => setSelectedAnimal(type.id)}
-                      className={`flex flex-col items-center p-3 rounded-2xl border-2 transition-all ${
+                      className={`geo-card p-2 flex flex-col items-center gap-2 hover:bg-green-50 ${
                         selectedAnimal === type.id 
-                        ? 'border-green-600 bg-green-50 shadow-inner' 
-                        : 'border-white bg-white hover:border-green-100'
+                        ? 'bg-green-50' 
+                        : ''
                       }`}
                     >
-                      <span className="text-3xl mb-1">{type.icon}</span>
+                      <div className="icon-circle bg-white text-2xl">{type.icon}</div>
                       <span className="text-[10px] font-bold text-gray-700">{type.name}</span>
                     </button>
                   ))}
@@ -219,10 +220,10 @@ export default function App() {
                         <button
                           key={sym.id}
                           onClick={() => toggleSymptom(sym.id)}
-                          className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold border transition-all ${
+                          className={`geo-button-primary flex items-center gap-2 px-4 py-2 text-xs font-bold transition-all ${
                             selectedSymptoms.includes(sym.id)
-                            ? 'bg-green-600 text-white border-green-600'
-                            : 'bg-white text-gray-600 border-gray-200'
+                            ? 'bg-[var(--geo-green)] text-white'
+                            : 'bg-white text-black'
                           }`}
                         >
                           <span>{sym.icon}</span>
@@ -235,10 +236,10 @@ export default function App() {
                   <button
                     onClick={handleSubmitCase}
                     disabled={isSubmitting || (!voiceBlob && selectedSymptoms.length === 0)}
-                    className={`w-full py-5 rounded-2xl font-bold text-lg shadow-xl transition-all ${
-                      isSubmitting 
-                      ? 'bg-gray-400 cursor-not-allowed' 
-                      : 'bg-green-700 text-white hover:bg-green-800 active:scale-95'
+                    className={`geo-card w-full py-4 text-black font-bold text-lg flex justify-center items-center gap-3 mb-8 transition-none ${
+                      isSubmitting || (!voiceBlob && selectedSymptoms.length === 0)
+                      ? 'opacity-50 cursor-not-allowed bg-gray-200' 
+                      : 'bg-[var(--geo-yellow)] hover:bg-[#e5a500] hover:-translate-y-1'
                     }`}
                   >
                     {isSubmitting ? (
@@ -274,18 +275,18 @@ export default function App() {
               )}
 
               {cases.length === 0 ? (
-                <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-gray-200">
-                  <div className="bg-gray-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                <div className="geo-card text-center py-20 bg-white">
+                  <div className="bg-gray-100 w-16 h-16 rounded-full border-2 border-[var(--geo-border)] flex items-center justify-center mx-auto mb-4">
                     <ClipboardList className="text-gray-400" />
                   </div>
-                  <p className="text-gray-500 font-medium">لا توجد حالات مسجلة بعد</p>
+                  <p className="text-gray-500 font-bold">لا توجد حالات مسجلة بعد</p>
                 </div>
               ) : (
                 cases.map((c) => (
-                  <div key={c.id} className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
-                    <div className="flex justify-between items-start mb-4">
+                  <div key={c.id} className={`geo-card p-4 flex flex-col gap-3 border-r-8 ${c.status === 'responded' ? 'border-r-green-500' : 'border-r-red-500'}`}>
+                    <div className="flex justify-between items-start mb-2">
                       <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 bg-green-50 rounded-xl flex items-center justify-center text-2xl">
+                        <div className="w-10 h-10 bg-white border-2 border-[var(--geo-border)] rounded-full flex items-center justify-center text-xl">
                           {ANIMAL_TYPES.find(t => t.id === c.animalType)?.icon || '🐾'}
                         </div>
                         <div>
@@ -293,8 +294,8 @@ export default function App() {
                           <p className="text-[10px] text-gray-400">{new Date(c.createdAt).toLocaleDateString('ar-YE')}</p>
                         </div>
                       </div>
-                      <span className={`px-3 py-1 rounded-full text-[10px] font-bold ${
-                        c.status === 'responded' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                      <span className={`status-badge ${
+                        c.status === 'responded' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
                       }`}>
                         {c.status === 'responded' ? 'تم الرد' : 'قيد الانتظار'}
                       </span>
@@ -328,38 +329,38 @@ export default function App() {
           )}
 
           {activeTab === 'records' && (
-            <div className="text-center py-20">
+            <div className="geo-card text-center py-20 bg-white">
               <BookOpen className="w-16 h-16 text-gray-300 mx-auto mb-4" />
               <h2 className="text-xl font-bold text-gray-800 mb-2">سجل الحلال</h2>
-              <p className="text-gray-500">قريباً.. تتبع تاريخ كل حيوان لديك بالتفاصيل.</p>
+              <p className="text-gray-500 font-bold">قريباً.. تتبع تاريخ كل حيوان لديك بالتفاصيل.</p>
             </div>
           )}
 
           {activeTab === 'profile' && (
             <div className="space-y-6">
-               <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
-                  <div className="flex items-center gap-4 mb-6">
-                    <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center text-3xl">👤</div>
+               <div className="geo-card p-6">
+                  <div className="flex items-center gap-4 mb-6 relative">
+                    <div className="w-16 h-16 bg-[var(--geo-green)] border-2 border-[var(--geo-border)] rounded-lg shadow-[4px_4px_0_0_var(--geo-border)] flex items-center justify-center text-3xl">🧑</div>
                     <div>
-                        <h2 className="text-xl font-bold">{profile?.name}</h2>
-                        <p className="text-gray-500">{profile?.role === 'farmer' ? 'مربي' : 'طبيب بيطري'}</p>
+                        <h2 className="text-xl font-black">{profile?.name}</h2>
+                        <p className="text-gray-500 font-bold">{profile?.role === 'farmer' ? 'مربي' : 'طبيب بيطري'}</p>
                     </div>
                   </div>
                   <div className="space-y-4">
-                    <div className="flex justify-between items-center p-4 bg-gray-50 rounded-2xl text-sm">
+                    <div className="flex justify-between items-center p-4 border-2 border-black bg-gray-50 text-sm font-bold">
                         <span className="text-gray-500">رقم الهاتف</span>
-                        <span className="font-bold">{profile?.phone}</span>
+                        <span>{profile?.phone}</span>
                     </div>
-                    <div className="flex justify-between items-center p-4 bg-gray-50 rounded-2xl text-sm">
+                    <div className="flex justify-between items-center p-4 border-2 border-black bg-gray-50 text-sm font-bold">
                         <span className="text-gray-500">الموقع</span>
-                        <span className="font-bold">وادي حضرموت</span>
+                        <span>وادي حضرموت</span>
                     </div>
                   </div>
                </div>
                
                <button 
                  onClick={() => auth.signOut()}
-                 className="w-full p-4 text-red-600 font-bold border-2 border-red-100 rounded-2xl hover:bg-red-50 transition-colors"
+                 className="geo-card w-full p-4 text-red-600 font-black hover:bg-red-50 bg-white shadow-[4px_4px_0_0_var(--geo-border)] active:shadow-none active:translate-x-1 active:translate-y-1 transition-all"
                >
                  تسجيل الخروج
                </button>
