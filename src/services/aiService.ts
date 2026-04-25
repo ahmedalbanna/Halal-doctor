@@ -31,10 +31,9 @@ export async function analyzeSymptoms(animalType: string, symptoms: string[], de
     الوصف الإضافي: ${description || 'لا يوجد'}.
     
     الرجاء تحليل هذه الحالة بناءً على المعطيات (استمع للمقطع الصوتي إن وجد وانظر للصورة إن وجدت).
-    قدم تشخيصاً مبدئياً سريعاً.
-    إذا كانت هناك صورة، اذكر ما تراه فيها بخصوص المرض.
-    ثم قدم نصيحة إسعافات أولية أو إجراء وقائي للمزارع اليمني.
-    تحدث بلهجة يمنية بسيطة ومفهومة للرعاة.
+    قدم ردك بتنسيق JSON حصراً يحتوي على حقلين:
+    1. "farmerAdvice": نصيحة مبدئية سريعة باللهجة اليمنية المفهومة للرعاة كإسعاف أولي.
+    2. "differentialDiagnosis": تشخيص تفريقي (احتمالات المرض ونسب مئوية تقريبية) موجه للطبيب البيطري بلغة علمية مبسطة.
   `;
 
   const parts: any[] = [prompt];
@@ -49,11 +48,41 @@ export async function analyzeSymptoms(animalType: string, symptoms: string[], de
 
   try {
     const result = await model.generateContent(parts);
-    return result.response.text();
+    const text = result.response.text();
+    // Try to parse JSON from the response
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+       return JSON.parse(jsonMatch[0]);
+    }
+    return {
+       farmerAdvice: text,
+       differentialDiagnosis: "تم تقديم النصيحة للراعي، بانتظار تشخيصك الدقيق."
+    };
   } catch (error) {
     console.error("Gemini Analysis Error:", error);
-    return "عذراً، لم أستطع تحليل الحالة بشكل كامل الآن. سيقوم الطبيب المختص بمراجعة بلاغك والرد قريباً.";
+    return {
+        farmerAdvice: "عذراً، لم أستطع تحليل الحالة بشكل كامل الآن. سيقوم الطبيب المختص بمراجعة بلاغك والرد قريباً.",
+        differentialDiagnosis: "فشل التحليل الذكي للبيانات."
+    };
   }
+}
+
+export async function getPrescriptionSuggestions(animalType: string, symptoms: string[], differentialDiagnosis?: string) {
+    if (!genAI) return [];
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const prompt = `
+    كصيدلي بيطري، اقترح 2 إلى 3 خطط علاجية سريعة (أدوية شائعة أو إجراءات) وتكون مناسبة لليمن لحالة: 
+    الحيوان: ${animalType}
+    الأعراض: ${symptoms.join(', ')}
+    الاقتراح التشخيصي: ${differentialDiagnosis || 'غير محدد'}
+    احتفظ بها قصيرة جداً (سطر لكل خيار).
+    `;
+    try {
+        const result = await model.generateContent(prompt);
+        return result.response.text().split('\n').filter(l => l.trim().length > 5);
+    } catch (e) {
+        return ["مضاد حيوي شامل وفيتامينات", "عزل الحيوان ومراقبة الحرارة"];
+    }
 }
 
 export async function getPreventativeTips(animalType: string) {

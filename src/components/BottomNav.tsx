@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { Home, ClipboardList, BookOpen, User } from 'lucide-react';
+import { Home, ClipboardList, BookOpen, User, Map as MapIcon } from 'lucide-react';
 
 interface BottomNavProps {
   activeTab: string;
@@ -12,6 +12,7 @@ export function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
     { id: 'home', label: 'الرئيسية', icon: Home },
     { id: 'cases', label: 'حالاتي', icon: ClipboardList },
     { id: 'records', label: 'السجل', icon: BookOpen },
+    { id: 'map', label: 'الخريطة', icon: MapIcon },
     { id: 'profile', label: 'حسابي', icon: User },
   ];
 

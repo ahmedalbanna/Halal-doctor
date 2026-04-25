@@ -3,13 +3,12 @@ import { Mic, Square, Play, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface VoiceRecorderProps {
-  onRecordingComplete: (blob: Blob) => void;
+  onRecordingComplete: (blobs: Blob[]) => void;
 }
 
 export function VoiceRecorder({ onRecordingComplete }: VoiceRecorderProps) {
   const [isRecording, setIsRecording] = useState(false);
-  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [recordings, setRecordings] = useState<{blob: Blob, url: string}[]>([]);
   const [volume, setVolume] = useState(0);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -53,9 +52,9 @@ export function VoiceRecorder({ onRecordingComplete }: VoiceRecorderProps) {
 
       mediaRecorder.onstop = () => {
         const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
-        setAudioBlob(blob);
-        setAudioUrl(URL.createObjectURL(blob));
-        onRecordingComplete(blob);
+        const newRecordings = [...recordings, {blob, url: URL.createObjectURL(blob)}];
+        setRecordings(newRecordings);
+        onRecordingComplete(newRecordings.map(r => r.blob));
         stream.getTracks().forEach(track => track.stop());
         if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
         if (audioContextRef.current?.state !== 'closed') audioContextRef.current?.close();
@@ -77,9 +76,11 @@ export function VoiceRecorder({ onRecordingComplete }: VoiceRecorderProps) {
     }
   };
 
-  const deleteRecording = () => {
-    setAudioBlob(null);
-    setAudioUrl(null);
+  const deleteRecording = (index: number) => {
+    const newRecordings = [...recordings];
+    newRecordings.splice(index, 1);
+    setRecordings(newRecordings);
+    onRecordingComplete(newRecordings.map(r => r.blob));
   };
   
   useEffect(() => {
@@ -90,15 +91,32 @@ export function VoiceRecorder({ onRecordingComplete }: VoiceRecorderProps) {
   }, []);
 
   return (
-    <div className="geo-card p-10 flex flex-col items-center justify-center gap-6 relative overflow-hidden">
+    <div className="geo-card p-6 flex flex-col items-center justify-center gap-6 relative overflow-hidden">
       <div className="absolute top-0 right-0 w-24 h-24 bg-[var(--geo-green)] opacity-10 -mr-8 -mt-8 rotate-45"></div>
-      <div className="text-center z-10">
+      <div className="text-center z-10 w-full">
         <h3 className="text-xl font-bold text-black">اشرح المشكلة بصوتك</h3>
-        <p className="text-sm font-bold text-gray-500">تحدث بلهجتك، نحن نسمعك</p>
-      </div>
+        <p className="text-sm font-bold text-gray-500 mb-4">تحدث بلهجتك، نحن نسمعك. يمكنك تسجيل أكثر من مقطع.</p>
+        
+        {recordings.length > 0 && (
+            <div className="space-y-3 mb-6 w-full">
+                {recordings.map((rec, i) => (
+                    <div key={i} className="flex flex-col gap-2">
+                        <span className="text-xs font-bold text-gray-600 text-right">مقطع {i + 1}</span>
+                        <div className="flex items-center gap-2 w-full bg-gray-50 border-2 border-[var(--geo-border)] p-2">
+                            <audio src={rec.url} controls className="flex-1 h-8" />
+                            <button
+                                onClick={() => deleteRecording(i)}
+                                className="p-2 text-white bg-red-600 border-2 border-red-600 hover:bg-red-700 transition-colors"
+                            >
+                                <Trash2 size={16} strokeWidth={3} />
+                            </button>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        )}
 
-      {!audioUrl ? (
-        <div className="relative flex justify-center items-center w-full">
+        <div className="relative flex justify-center items-center w-full mt-4">
           {/* Visualizer rings */}
           {isRecording && (
               <div 
@@ -118,27 +136,17 @@ export function VoiceRecorder({ onRecordingComplete }: VoiceRecorderProps) {
             }`}
           >
             {isRecording ? <Square className="text-white w-8 h-8" /> : <Mic className="text-white w-10 h-10" />}
-            {!isRecording && <span className="font-black text-sm">اضغط وسجل</span>}
+            {!isRecording && <span className="font-black text-sm">{recordings.length > 0 ? 'إضافة مقطع آخر' : 'اضغط وسجل'}</span>}
           </button>
         </div>
-      ) : (
-        <div className="flex items-center gap-4 w-full relative z-10">
-          <audio src={audioUrl} controls className="flex-1 h-10" />
-          <button
-            onClick={deleteRecording}
-            className="p-3 bg-red-100 text-red-600 rounded-full hover:bg-red-200 border-2 border-red-600 transition-colors"
-          >
-            <Trash2 size={20} />
-          </button>
-        </div>
-      )}
 
-      {isRecording && (
-        <div className="text-red-500 font-bold flex items-center gap-2 mt-2 z-10">
-          <div className="w-2 h-2 bg-red-500 rounded-full animate-ping" />
-          جاري التسجيل...
-        </div>
-      )}
+        {isRecording && (
+          <div className="text-red-500 font-bold flex items-center justify-center gap-2 mt-4 z-10">
+            <div className="w-2 h-2 bg-red-500 rounded-full animate-ping" />
+            جاري التسجيل...
+          </div>
+        )}
+      </div>
     </div>
   );
 }

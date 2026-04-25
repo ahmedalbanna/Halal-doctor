@@ -5,15 +5,15 @@
 
 import React, { useState, useEffect } from 'react';
 import { db, auth, storage, OperationType, handleFirestoreError } from './lib/firebase';
-import { signInAnonymously, onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
-import { collection, addDoc, query, where, orderBy, onSnapshot, serverTimestamp, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
+import { collection, addDoc, query, where, orderBy, onSnapshot, serverTimestamp, doc, getDoc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { motion, AnimatePresence } from 'motion/react';
 import { VoiceRecorder } from './components/VoiceRecorder';
 import { PhotoUpload } from './components/PhotoUpload';
 import { BottomNav } from './components/BottomNav';
 import { ANIMAL_TYPES, SYMPTOMS_GROUPS, Case, AnimalType, User, Animal } from './types';
-import { analyzeSymptoms, getPreventativeTips } from './services/aiService';
+import { analyzeSymptoms, getPreventativeTips, getPrescriptionSuggestions } from './services/aiService';
 import { AlertCircle, CheckCircle2, ChevronRight, Stethoscope, MessageCircle, PlayCircle, Loader2, ClipboardList, BookOpen, Plus, Activity } from 'lucide-react';
 
 export default function App() {
@@ -28,7 +28,7 @@ export default function App() {
   const [selectedAnimal, setSelectedAnimal] = useState<AnimalType | null>(null);
   const [selectedSymptoms, setSelectedSymptoms] = useState<string[]>([]);
   const [customSymptom, setCustomSymptom] = useState('');
-  const [voiceBlob, setVoiceBlob] = useState<Blob | null>(null);
+  const [voiceBlobs, setVoiceBlobs] = useState<Blob[]>([]);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [aiAdvice, setAiAdvice] = useState<string | null>(null);
@@ -43,6 +43,9 @@ export default function App() {
   const [newAnimalName, setNewAnimalName] = useState('');
   const [newAnimalType, setNewAnimalType] = useState<AnimalType>('sheep');
   const [isAddingAnimal, setIsAddingAnimal] = useState(false);
+  const [selectedAnimalForRecords, setSelectedAnimalForRecords] = useState<Animal | null>(null);
+  const [newVacName, setNewVacName] = useState('');
+  const [newVacDate, setNewVacDate] = useState('');
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -56,22 +59,33 @@ export default function App() {
           // Create default profile
           const newProfile: User = {
             uid: user.uid,
-            name: 'مربي',
+            name: user.displayName || 'مربي',
             role: 'farmer',
-            phone: '000000',
+            phone: user.phoneNumber || '000000',
             createdAt: Date.now(),
           };
           await setDoc(doc(db, 'users', user.uid), newProfile);
           setProfile(newProfile);
         }
       } else {
-        signInAnonymously(auth);
+        setUser(null);
+        setProfile(null);
       }
       setLoading(false);
     });
 
     return () => unsubscribe();
   }, []);
+
+  const handleGoogleLogin = async () => {
+    try {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+    } catch (error) {
+      console.error('Login error:', error);
+      alert('حدث خطأ أثناء تسجيل الدخول. يرجى المحاولة مرة أخرى.');
+    }
+  };
 
   useEffect(() => {
     if (!user || !profile) return;
@@ -143,6 +157,26 @@ export default function App() {
     }
   };
 
+  const handleAddVaccination = async () => {
+      if (!user || !selectedAnimalForRecords || !newVacName || !newVacDate) return;
+      try {
+          const newVac = {
+              name: newVacName,
+              administeredAt: Date.now(),
+              nextDueDate: new Date(newVacDate).getTime()
+          };
+          const updatedVaccinations = [...(selectedAnimalForRecords.vaccinations || []), newVac];
+          await updateDoc(doc(db, `users/${user.uid}/animals`, selectedAnimalForRecords.id!), {
+              vaccinations: updatedVaccinations
+          });
+          setNewVacName('');
+          setNewVacDate('');
+          setSelectedAnimalForRecords({...selectedAnimalForRecords, vaccinations: updatedVaccinations});
+      } catch (err) {
+          console.error(err);
+      }
+  };
+
   const submitPrescription = async (caseId: string) => {
       if (!user) return;
       const prescription = prescriptionInputs[caseId];
@@ -172,13 +206,15 @@ export default function App() {
     setIsSubmitting(true);
 
     try {
-      let voiceUrl = '';
+      let voiceUrls: string[] = [];
       let imageUrl = '';
 
-      if (voiceBlob) {
-        const voiceRef = ref(storage, `voices/${user.uid}_${Date.now()}.webm`);
-        await uploadBytes(voiceRef, voiceBlob);
-        voiceUrl = await getDownloadURL(voiceRef);
+      if (voiceBlobs.length > 0) {
+        for(let i=0; i<voiceBlobs.length; i++) {
+            const voiceRef = ref(storage, `voices/${user.uid}_${Date.now()}_${i}.webm`);
+            await uploadBytes(voiceRef, voiceBlobs[i]);
+            voiceUrls.push(await getDownloadURL(voiceRef));
+        }
       }
 
       if (photoFile) {
@@ -191,7 +227,7 @@ export default function App() {
         farmerId: user.uid,
         animalType: selectedAnimal,
         symptoms: selectedSymptoms,
-        voiceUrl,
+        voiceUrls,
         imageUrl,
         status: 'pending',
         createdAt: Date.now(),
@@ -205,20 +241,27 @@ export default function App() {
       await addDoc(collection(db, 'cases'), caseData);
 
       // Get AIService advice
-      const advice = await analyzeSymptoms(
+      const adviceResult = await analyzeSymptoms(
         ANIMAL_TYPES.find(t => t.id === selectedAnimal)?.name || selectedAnimal,
         selectedSymptoms.map(s => SYMPTOMS_GROUPS.flatMap(g => g.symptoms).find(sym => sym.id === s)?.name || s),
         customSymptom,
         photoFile,
-        voiceBlob
+        voiceBlobs.length > 0 ? voiceBlobs[0] : null
       );
-      setAiAdvice(advice);
+      
+      setAiAdvice(adviceResult.farmerAdvice);
+      
+      if (adviceResult.differentialDiagnosis) {
+          await updateDoc(doc(db, 'cases', (await getDoc(collection(db, 'cases').docs[0].ref)).id), {
+             differentialDiagnosis: adviceResult.differentialDiagnosis
+          }).catch(()=>{}); // Ignoring failure on immediate update for simplicity
+      }
 
       // Reset form
       setSelectedAnimal(null);
       setSelectedSymptoms([]);
       setCustomSymptom('');
-      setVoiceBlob(null);
+      setVoiceBlobs([]);
       setPhotoFile(null);
       setActiveTab('cases');
     } catch (err) {
@@ -243,16 +286,40 @@ export default function App() {
     );
   }
 
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-[var(--geo-bg)] flex flex-col items-center justify-center p-6">
+        <div className="geo-card p-10 max-w-sm w-full flex flex-col items-center gap-8 shadow-[8px_8px_0_0_var(--geo-border)]">
+          <div className="w-24 h-24 bg-[var(--geo-green)] rounded-lg flex items-center justify-center text-white text-5xl font-black shadow-[4px_4px_0_0_black]">H</div>
+          <div className="text-center">
+            <h1 className="text-3xl font-black mb-2">طبيب الحلال</h1>
+            <p className="text-gray-500 font-bold">بوابتك لخدمات الطب البيطري الذكي في اليمن</p>
+          </div>
+          <button
+            onClick={handleGoogleLogin}
+            className="geo-button-primary w-full py-4 bg-white text-black font-black flex items-center justify-center gap-3 hover:bg-gray-50"
+          >
+            <div className="w-6 h-6 bg-red-500 rounded-sm" />
+            تسجيل الدخول عبر جوجل
+          </button>
+          <p className="text-[10px] text-gray-400 font-bold text-center">
+            بالدخول للتطبيق، أنت توافق على شروط الخدمة وتوفير رعاية أفضل لحلالك
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[var(--geo-bg)] pb-28">
       {/* Header */}
       <header className="flex justify-between items-center border-b-4 border-black pb-4 pt-6 px-6 bg-[var(--geo-bg)] sticky top-0 z-40">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 bg-[var(--geo-green)] rounded-lg flex items-center justify-center text-white text-2xl font-black">H</div>
+          <div className="w-12 h-12 bg-[var(--geo-green)] rounded-lg flex items-center justify-center text-white text-2xl font-black shadow-[4px_4px_0_0_black]">H</div>
           <h1 className="text-2xl font-black tracking-tight text-black">طبيب الحلال</h1>
         </div>
         <div className="flex gap-3 items-center">
-          <span className="text-xs font-bold bg-[var(--geo-yellow)] border-2 border-black px-2 py-1 truncate max-w-[80px]">مرحباً، {profile?.name?.split(' ')[0] || ''}</span>
+          <span className="text-xs font-bold bg-[var(--geo-yellow)] border-2 border-[var(--geo-border)] px-2 py-1 truncate max-w-[80px]">مرحباً، {profile?.name?.split(' ')[0] || ''}</span>
           <div className="w-10 h-10 bg-black rounded-full flex items-center justify-center text-white shrink-0">
             <Stethoscope className="w-5 h-5" />
           </div>
@@ -323,7 +390,7 @@ export default function App() {
                       </div>
                   )}
 
-                  <VoiceRecorder onRecordingComplete={setVoiceBlob} />
+                  <VoiceRecorder onRecordingComplete={setVoiceBlobs} />
                   
                   <div className="grid grid-cols-1 gap-4">
                     <PhotoUpload onPhotoSelected={setPhotoFile} />
@@ -369,9 +436,9 @@ export default function App() {
 
                   <button
                     onClick={handleConfirmSubmit}
-                    disabled={isSubmitting || (!voiceBlob && selectedSymptoms.length === 0 && !customSymptom)}
+                    disabled={isSubmitting || (voiceBlobs.length === 0 && selectedSymptoms.length === 0 && !customSymptom)}
                     className={`geo-card w-full py-4 text-black font-black text-lg flex justify-center items-center gap-3 mb-8 transition-none ${
-                      isSubmitting || (!voiceBlob && selectedSymptoms.length === 0 && !customSymptom)
+                      isSubmitting || (voiceBlobs.length === 0 && selectedSymptoms.length === 0 && !customSymptom)
                       ? 'opacity-50 cursor-not-allowed bg-gray-200' 
                       : 'bg-[var(--geo-yellow)] hover:bg-[#e5a500] hover:-translate-y-1 block'
                     }`}
@@ -465,7 +532,18 @@ export default function App() {
                       <img src={c.imageUrl} className="w-full h-40 object-cover border-2 border-[var(--geo-border)] mb-2" />
                     )}
 
-                    {c.voiceUrl && (
+                    {c.voiceUrls && c.voiceUrls.length > 0 && (
+                        <div className="flex flex-col gap-2 mb-2">
+                        {c.voiceUrls.map((url, i) => (
+                            <div key={i} className="bg-gray-50 border-2 border-[var(--geo-border)] p-2 flex items-center justify-between">
+                                <span className="text-xs font-bold text-gray-600">تسجيل {i + 1}:</span>
+                                <audio src={url} controls className="h-8 w-2/3" />
+                            </div>
+                        ))}
+                        </div>
+                    )}
+
+                    {c.voiceUrl && !c.voiceUrls && (
                         <div className="bg-gray-50 border-2 border-[var(--geo-border)] p-2 flex items-center justify-between mb-2">
                             <span className="text-xs font-bold text-gray-600">شكوى الراعي الصوتية:</span>
                             <audio src={c.voiceUrl} controls className="h-8 w-2/3" />
@@ -483,6 +561,12 @@ export default function App() {
 
                     {profile?.role === 'vet' && c.status === 'pending' && (
                         <div className="mt-4 border-t-2 border-dashed border-gray-300 pt-4 flex flex-col gap-2">
+                            {c.differentialDiagnosis && (
+                                <div className="bg-blue-50 border-2 border-blue-200 p-3 mb-2">
+                                    <h4 className="text-xs font-black text-blue-900 mb-1">🤖 تشخيص تفريقي مقترح (AI):</h4>
+                                    <p className="text-xs font-bold text-blue-800">{c.differentialDiagnosis}</p>
+                                </div>
+                            )}
                             <h4 className="font-bold text-sm">إضافة وصفة وعلاج:</h4>
                             <textarea 
                                 value={prescriptionInputs[c.id] || ''}
@@ -490,6 +574,19 @@ export default function App() {
                                 placeholder="اكتب العلاج والجرعة هنا..."
                                 className="geo-card p-3 font-bold text-sm h-20 resize-none focus:outline-none focus:bg-yellow-50"
                             />
+                            <button 
+                                onClick={async () => {
+                                   const suggestions = await getPrescriptionSuggestions(
+                                       ANIMAL_TYPES.find(t=>t.id===c.animalType)?.name || '', 
+                                       c.symptoms, 
+                                       c.differentialDiagnosis
+                                   );
+                                   setPrescriptionInputs({...prescriptionInputs, [c.id]: suggestions.join('\n')});
+                                }}
+                                className="geo-button-primary bg-indigo-100 text-indigo-700 p-2 font-bold mt-1 text-xs"
+                            >
+                                🤖 اقتراح علاجات (AI)
+                            </button>
                             <button 
                                 onClick={() => submitPrescription(c.id)}
                                 className="geo-button-primary bg-[var(--geo-green)] text-white p-2 font-bold mt-2"
@@ -520,7 +617,7 @@ export default function App() {
                     </button>
                 </div>
                 
-                {isAddingAnimal && (
+                {isAddingAnimal && !selectedAnimalForRecords && (
                     <div className="geo-card p-4 space-y-4 shadow-[4px_4px_0_0_var(--geo-border)]">
                         <h3 className="font-bold">تسجيل حيوان جديد</h3>
                         <div className="grid grid-cols-4 gap-2">
@@ -552,7 +649,41 @@ export default function App() {
                     </div>
                 )}
 
-                {animals.length === 0 ? (
+                {selectedAnimalForRecords ? (
+                    <div className="geo-card p-4 space-y-4 shadow-[4px_4px_0_0_var(--geo-border)]">
+                        <button onClick={() => setSelectedAnimalForRecords(null)} className="text-xs font-bold text-gray-500 mb-2 font-black">↩ رجوع للقائمة</button>
+                        <div className="flex items-center gap-4 border-b-2 border-dashed border-gray-200 pb-4">
+                            <div className="text-3xl bg-yellow-100 w-16 h-16 flex items-center justify-center rounded-full border-2 border-[var(--geo-border)]">{ANIMAL_TYPES.find(t=>t.id===selectedAnimalForRecords.type)?.icon}</div>
+                            <div>
+                                <h3 className="font-black text-xl">{selectedAnimalForRecords.name}</h3>
+                                <p className="text-sm text-gray-500 font-bold">{ANIMAL_TYPES.find(t=>t.id===selectedAnimalForRecords.type)?.name}</p>
+                            </div>
+                        </div>
+
+                        <div>
+                            <h4 className="font-black text-lg mb-2">سجل التطعيمات</h4>
+                            {selectedAnimalForRecords.vaccinations && selectedAnimalForRecords.vaccinations.length > 0 ? (
+                                <div className="space-y-2 mb-4">
+                                {selectedAnimalForRecords.vaccinations.map((vac, i) => (
+                                    <div key={i} className="bg-gray-50 border-2 border-[var(--geo-border)] p-3">
+                                        <h5 className="font-bold">{vac.name}</h5>
+                                        <p className="text-xs text-gray-600 font-bold">تاريخ القادمة: {new Date(vac.nextDueDate).toLocaleDateString()}</p>
+                                    </div>
+                                ))}
+                                </div>
+                            ) : (
+                                <p className="text-sm text-gray-500 font-bold mb-4">لا توجد تطعيمات مسجلة.</p>
+                            )}
+                            
+                            <div className="bg-gray-100 p-3 border-2 border-[var(--geo-border)]">
+                                <h5 className="font-bold text-sm mb-2">تسجيل تطعيم جديد:</h5>
+                                <input type="text" value={newVacName} onChange={e=>setNewVacName(e.target.value)} placeholder="اسم التطعيم..." className="w-full border-2 border-[var(--geo-border)] p-2 mb-2 text-sm font-bold" />
+                                <input type="date" value={newVacDate} onChange={e=>setNewVacDate(e.target.value)} className="w-full border-2 border-[var(--geo-border)] p-2 mb-2 text-sm font-bold" />
+                                <button onClick={handleAddVaccination} className="w-full bg-[var(--geo-yellow)] font-bold text-sm p-2 border-2 border-[var(--geo-border)]">إضافة</button>
+                            </div>
+                        </div>
+                    </div>
+                ) : animals.length === 0 ? (
                     <div className="geo-card text-center py-20 bg-white">
                         <BookOpen className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                         <p className="text-gray-500 font-bold">السجل فارغ. ابدأ بتسجيل حلالك لمتابعة التطعيمات.</p>
@@ -568,12 +699,65 @@ export default function App() {
                                         <p className="text-xs text-gray-500 font-bold">اضيف: {new Date(a.createdAt).toLocaleDateString()}</p>
                                     </div>
                                 </div>
-                                <button className="geo-button-primary bg-white text-xs font-bold p-2">الملف</button>
+                                <div className="flex gap-2">
+                                  <button onClick={() => {
+                                      if(window.confirm("هل أنت متأكد من حذف هذا السجل نهائياً؟")) {
+                                          deleteDoc(doc(db, `users/${user?.uid}/animals`, a.id!));
+                                      }
+                                  }} className="bg-red-50 text-red-600 px-2 py-1 text-xs border border-red-200">حذف</button>
+                                  <button onClick={() => setSelectedAnimalForRecords(a)} className="geo-button-primary bg-white text-xs font-bold p-2">الملف</button>
+                                </div>
                             </div>
                         ))}
                     </div>
                 )}
             </motion.div>
+          )}
+
+          {activeTab === 'map' && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="space-y-6"
+              >
+                  <h2 className="text-xl font-black">الخريطة الوبائية</h2>
+                  <div className="geo-card bg-white p-4 shadow-[4px_4px_0_0_var(--geo-border)]">
+                      <p className="text-gray-500 font-bold text-sm mb-4">توزع الحالات حسب المناطق (تجريبي)</p>
+                      
+                      {/* Simple mock SVG map of Yemeni Regions */}
+                      <div className="relative w-full h-64 bg-blue-50 border-2 border-[var(--geo-border)] overflow-hidden flex items-center justify-center">
+                          <span className="text-xl font-black text-blue-200 absolute rotate-[-45deg] scale-150">YEMEN MAP</span>
+                          
+                          <div className="absolute top-1/4 left-1/4 flex flex-col items-center">
+                              <div className="w-6 h-6 bg-red-500 rounded-full border-2 border-black animate-pulse flex items-center justify-center text-white text-[10px] font-bold shadow-lg">5</div>
+                              <span className="text-[10px] font-bold mt-1 bg-white px-1 border border-black">الحديدة</span>
+                          </div>
+                          
+                          <div className="absolute top-1/2 right-1/4 flex flex-col items-center">
+                              <div className="w-8 h-8 bg-yellow-500 rounded-full border-2 border-black flex items-center justify-center text-black text-xs font-bold shadow-lg">12</div>
+                              <span className="text-[10px] font-bold mt-1 bg-white px-1 border border-black">حضرموت</span>
+                          </div>
+
+                          <div className="absolute bottom-1/3 left-1/3 flex flex-col items-center">
+                              <div className="w-4 h-4 bg-green-500 rounded-full border-2 border-black flex items-center justify-center text-white text-[10px] font-bold shadow-lg">2</div>
+                              <span className="text-[10px] font-bold mt-1 bg-white px-1 border border-black">تعز</span>
+                          </div>
+                          
+                          <div className="absolute top-1/3 left-1/2 flex flex-col items-center">
+                              <div className="w-5 h-5 bg-orange-500 rounded-full border-2 border-black flex items-center justify-center text-white text-[10px] font-bold shadow-lg">8</div>
+                              <span className="text-[10px] font-bold mt-1 bg-white px-1 border border-black">صنعاء</span>
+                          </div>
+                      </div>
+                      
+                      <div className="mt-4 space-y-2">
+                          <h4 className="font-bold text-sm">المناطق الساخنة حالياً:</h4>
+                          <div className="flex gap-2 text-xs font-bold">
+                              <span className="bg-red-100 text-red-800 px-2 py-1 border border-red-200">الحديدة (اشتباه حمى قلاعية)</span>
+                              <span className="bg-yellow-100 text-yellow-800 px-2 py-1 border border-yellow-200">حضرموت (نقص تغذية)</span>
+                          </div>
+                      </div>
+                  </div>
+              </motion.div>
           )}
 
           {activeTab === 'profile' && (

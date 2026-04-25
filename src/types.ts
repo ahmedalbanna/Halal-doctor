@@ -10,12 +10,20 @@ export interface User {
   createdAt: number;
 }
 
+export interface Vaccination {
+  id?: string;
+  name: string;
+  administeredAt: number;
+  nextDueDate: number;
+}
+
 export interface Animal {
   id?: string;
   ownerId: string;
   name: string;
   type: string;
   healthHistory: string[];
+  vaccinations?: Vaccination[];
   createdAt: number;
 }
 
@@ -24,13 +32,15 @@ export interface Case {
   farmerId: string;
   vetId?: string;
   animalType: AnimalType;
-  voiceUrl?: string;
+  voiceUrl?: string; // Legacy
+  voiceUrls?: string[];
   imageUrl?: string;
   symptoms: string[];
   customSymptoms?: string;
   status: 'pending' | 'assigned' | 'responded' | 'closed';
   vetVoiceResponseUrl?: string;
   prescription?: string;
+  differentialDiagnosis?: string;
   createdAt: number;
   updatedAt: number;
 }
